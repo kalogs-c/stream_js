@@ -12,41 +12,55 @@
     const videoElement = document.getElementById('videoPlayer');
     const socket = io();
     const mediaSource = new MediaSource();
+    let sourceBuffer;
+    let queue = [];
+    let isAppending = false;
 
     videoElement.src = URL.createObjectURL(mediaSource);
 
-    let sourceBuffer;
-    let queue = [];
-
     mediaSource.addEventListener('sourceopen', () => {
+      // Create SourceBuffer with the correct codec
       sourceBuffer = mediaSource.addSourceBuffer('video/webm; codecs="vp8, opus"');
 
-      // Handle updates to the SourceBuffer
+      // Event listener for updateend to manage queued data
       sourceBuffer.addEventListener('updateend', () => {
-        if (queue.length > 0 && !sourceBuffer.updating) {
-          sourceBuffer.appendBuffer(queue.shift());
+        isAppending = false;
+        if (queue.length > 0) {
+          appendNextBuffer(); // Append next chunk if available
         }
       });
 
       socket.on('videoData', (base64Data) => {
+        if (mediaSource.readyState !== 'open') return; // Ensure MediaSource is open
+
         // Decode base64 to binary
         const binaryString = window.atob(base64Data);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
-
         for (let i = 0; i < len; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
 
         const buffer = bytes.buffer;
+        queue.push(buffer);
 
-        if (sourceBuffer && !sourceBuffer.updating) {
-          sourceBuffer.appendBuffer(buffer);
-        } else {
-          queue.push(buffer); // Queue data if the SourceBuffer is busy
+        if (!isAppending && !sourceBuffer.updating) {
+          appendNextBuffer();
         }
       });
     });
+
+    function appendNextBuffer() {
+      if (queue.length === 0 || sourceBuffer.updating || isAppending) return;
+      isAppending = true;
+      const buffer = queue.shift();
+      try {
+        sourceBuffer.appendBuffer(buffer); // Append data to SourceBuffer
+      } catch (error) {
+        console.error('Error appending buffer:', error);
+        isAppending = false;
+      }
+    }
   </script>
 </body>
 </html>

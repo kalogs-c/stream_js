@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Screen Recorder</title>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <h1>Screen Recorder</h1>
+  <button onclick="startScreenRecording()">Start Recording</button>
+
+  <script>
+    const socket = io(); // Connect to the server
+
+    async function startScreenRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (event) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64Data = reader.result.split(',')[1]; // Extract base64 string
+            console.log(base64Data);
+            socket.emit('videoData', base64Data); // Send base64 data to the server
+          };
+          reader.readAsDataURL(event.data); // Convert Blob to base64
+        };
+
+        mediaRecorder.start(100); // Record with 100ms chunks
+      } catch (error) {
+        console.error('Error capturing screen:', error);
+      }
+    }
+  </script>
+</body>
+</html>
+

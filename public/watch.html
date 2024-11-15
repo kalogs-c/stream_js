@@ -2,7 +2,7 @@
 <html>
 <head>
   <title>Screen Watcher</title>
-  <script src="https://cdn.socket.io/4.8.0/socket.io.min.js" integrity="sha384-OoIbkvzsFFQAG88r+IqMAjyOtYDPGO0cqK5HF5Uosdy/zUEGySeAzytENMDynREd" crossorigin="anonymous"></script>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
   <h1>Screen Watcher</h1>
@@ -10,16 +10,27 @@
 
   <script>
     const videoElement = document.getElementById('videoPlayer');
-    const socket = io(); // Connect to the server
+    const socket = io();
     const mediaSource = new MediaSource();
 
     videoElement.src = URL.createObjectURL(mediaSource);
 
+    let sourceBuffer;
+    let queue = [];
+
     mediaSource.addEventListener('sourceopen', () => {
-      const sourceBuffer = mediaSource.addSourceBuffer('video/webm; codecs="vp8, opus"'); // Adjust codecs as needed
+      sourceBuffer = mediaSource.addSourceBuffer('video/webm; codecs="vp8, opus"');
+
+      // Handle updates to the SourceBuffer
+      sourceBuffer.addEventListener('updateend', () => {
+        if (queue.length > 0 && !sourceBuffer.updating) {
+          sourceBuffer.appendBuffer(queue.shift());
+        }
+      });
 
       socket.on('videoData', (base64Data) => {
-        const binaryString = window.atob(base64Data); // Decode base64 to binary
+        // Decode base64 to binary
+        const binaryString = window.atob(base64Data);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
 
@@ -27,8 +38,13 @@
           bytes[i] = binaryString.charCodeAt(i);
         }
 
-        console.log(bytes.buffer);
-        sourceBuffer.appendBuffer(bytes.buffer); // Append to the video buffer
+        const buffer = bytes.buffer;
+
+        if (sourceBuffer && !sourceBuffer.updating) {
+          sourceBuffer.appendBuffer(buffer);
+        } else {
+          queue.push(buffer); // Queue data if the SourceBuffer is busy
+        }
       });
     });
   </script>
